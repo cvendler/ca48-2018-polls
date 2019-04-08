@@ -1,0 +1,259 @@
+---
+title: ''
+author: "Céline Vendler"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+# Set up document settings
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      error = FALSE, 
+                      warning = FALSE)
+
+# Download the library "gt" in order to be able to create tables
+
+library(gt)
+library(tidyverse)
+
+```
+
+```{r read_data}
+
+# Read in the file "mt_1_elections-poll-ca48-3.csv" (polling data for the 48th
+# Congressional District in California) and store as a new dataset called
+# "ca48_data"
+
+ca48_data <- read_csv("elections-poll-ca48-3.csv")
+
+```
+
+```{r manipulate_data}
+
+# Create a new dataset called "ca48_clean_data" in order to perform preliminary
+# manipulations of the data for my plot; begin with the "ca48_data" dataset
+
+ca48_clean_data <- ca48_data %>% 
+  
+  # Keep only the variables pertinent to my plot, which are "region", "ager",
+  # "response", and "final_weight"; I choose the variable "ager" over the
+  # variable "age_combined", as the respondents are more evenly distributed into
+  # age-group categories in "ager" than they are in "age_combined"
+  
+  select(region, ager, response, final_weight) %>% 
+  
+  # Filter the data to keep only observations where the value of "ager" is not
+  # "[DO NOT READ] Refused"
+  
+  filter(ager != "[DO NOT READ] Refused") %>% 
+  
+  # Group the data by the variables "region", "ager", and "response" in order to
+  # calculate the weighted totals (the sums of final weights) by combination of
+  # "region", "ager", and "response"; I choose to use final weights in my
+  # calculations, as I want my plot to reflect as much as possible likely voters
+  
+  group_by(region, ager, response) %>% 
+  
+  # Calculate the weighted totals by combination of "region", "ager", and
+  # "response" ("weighted_total")
+  
+  summarize(weighted_total = sum(final_weight)) %>% 
+  
+  # Spread the data using the variable "response" as the key, using the variable
+  # "weighted_total" as the value, and replacing values of "NA" with 0 so that
+  # the dataset has five columns--one for "region", one for "ager", and one for
+  # each response ("Dem", "Rep", and "Und")--and sixteen rows, within which are
+  # the values of "region", the values of "ager", and the values of
+  # "weighted_total" (the weighted totals by combination of "region", "ager",
+  # and "response")
+  
+  spread(response, weighted_total, fill = 0) %>% 
+  
+  # Ungroup the data in order to be able to manipulate individual (ungrouped)
+  # observations
+  
+  ungroup() %>% 
+  
+  # Create a new variable called "total_by_region_ager", the values of which are
+  # the sums of the values of the columns "Dem", "Rep", and "Und" by combination
+  # of "region" and "ager" (the sums of the weighted totals by combination of
+  # "region", "ager", and "response" for each combination of "region" and
+  # "ager")
+  
+  mutate(total_by_region_ager = Dem + Rep + Und) %>% 
+  
+  # Modify the variable "Dem" by making its values equal to the original values
+  # of "Dem" divided by the corresponding values of "total_by_region_ager"
+  # multiplied by 100 so that the values of "Dem" are now percentages,
+  # reflecting the percentages of people from each combination of region and
+  # ager who responded "Dem"; I choose to use percentages so that the
+  # differences between Democrat and Republican responses can be compared across
+  # all regions and age groups in a standardized way (number of responses would
+  # have been difficult to compare across age groups, especially because there
+  # are much fewer "18 to 34" responses than "65 and older" responses, for
+  # example); I choose not to round my percentages to whole-number percentages,
+  # as doing so provides a more accurate picture in the graphic
+
+  mutate(Dem = 100 * (Dem / total_by_region_ager)) %>% 
+  
+  # Modify the variable "Rep" by making its values equal to the original values
+  # of "Rep" divided by the corresponding values of "total_by_region_ager"
+  # multiplied by 100 so that the values of "Rep" are now percentages,
+  # reflecting the percentages of people from each combination of region and
+  # ager who responded "Rep"; I choose not to round my percentages to
+  # whole-number percentages, for the same reason as above
+  
+  mutate(Rep = 100 * (Rep / total_by_region_ager)) %>% 
+  
+  # Deselect the variables "Und" and "total_by_region_ager", as they are not
+  # needed anymore; I choose not to include undecided respondents, as I want to
+  # compare percentages of respondents who responded "Dem" or "Rep", and
+  # including percentages of respondents who responded "Und" clutters the image
+  
+  select(-c(Und, total_by_region_ager))
+
+
+# Create a new dataset called "ca48_dem_data" in order to manipulate only data
+# for "Dem" responses; begin with the "ca48_clean_data" dataset
+
+ca48_dem_data <- ca48_clean_data %>% 
+  
+  # Deselect the variable "Rep"
+  
+  select(-Rep) %>% 
+  
+  # Rename the variable "Dem" to "percent"
+  
+  rename(percent = Dem) %>% 
+  
+  # Create a new variable called "response", the values of which are the word
+  # "Dem" (this new variable, along with the "response" variable with "Rep"
+  # values that I will create below, will allow me to differentiate between
+  # percentages corresponding to "Dem" responses and percentges corresponding to
+  # "Rep" responses when I bind rows below)
+  
+  mutate(response = "Dem")
+
+
+# Create a new dataset called "ca48_rep_data" in order to manipulate only data
+# for "Rep" responses; begin with the "ca48_clean_data" dataset
+
+ca48_rep_data <- ca48_clean_data %>% 
+  
+  # Deselect the variable "Dem"
+  
+  select(-Dem) %>% 
+  
+  # Rename the variable "Rep" to "percent"
+  
+  rename(percent = Rep) %>% 
+  
+  # Create a new variable called "response", the values of which are the word
+  # "Rep", as mentioned above
+  
+  mutate(response = "Rep")
+
+
+# Create a new dataset called "ca48_data_to_plot" in order to combine the
+# "ca48_dem_data" and the "ca48_rep_data" datasets into one dataset so as to be
+# able to plot in one graphic both "Dem" response data and "Rep" response data
+# data using ggplot; begin by binding together the rows of "ca48_dem_data" and
+# those of "ca48_rep_data"
+
+ca48_data_to_plot <- bind_rows(ca48_dem_data, ca48_rep_data) %>% 
+  
+  # Reorder the levels of the factor "region" so that "Huntington Beach/Fountain
+  # Valley" is first, "Costa Mesa/North" is second, "Newport Beach" is third,
+  # and "Laguna Beach/South" is fourth; I order the levels in this way, as the
+  # order progresses from more to less Republican-supporting overall (and,
+  # conversely, from less to more Democratic-supporting overall)
+  
+  mutate(region = fct_relevel(region, c("Huntington Beach/Fountain Valley", 
+                                        "Costa Mesa/North", 
+                                        "Newport Beach", 
+                                        "Laguna Beach/South"))) %>% 
+  
+  # Reorder the levels of the factor "ager" so that "65 and older" is first, "50
+  # to 64" is second, "35 to 49" is third, and "18 to 34" is fourth; visually,
+  # this order will be reversed as a result of my using the "coord_flip"
+  # function (flipping the coordinates) in plotting the graphic below
+  
+  mutate(ager = fct_relevel(ager, c("65 and older", 
+                                    "50 to 64", 
+                                    "35 to 49", 
+                                    "18 to 34"))) %>% 
+  
+  # Reorder the levels of the factor "response" so that "Dem" is first and "Rep"
+  # is second; visually this order will be reversed as a result of my using the
+  # "coord_flip" function (flipping the coordinates) in plotting the graphic
+  # below
+  
+  mutate(response = fct_relevel(response, c("Dem", 
+                                            "Rep")))
+
+```
+
+```{r create_graphic, fig.width = 10}
+
+# I set the figure width to 10 so that no text gets cut off. Plot
+# "ca48_data_to_plot" using ggplot, setting "ager" as the x-axis variable;
+# setting "percent" as the y-axis variable (these assignments will later be
+# flipped using the "coord_flip" function); and setting other aesthetics like
+# fill so that the columns are filled by response
+
+ggplot(ca48_data_to_plot, aes(x = ager, y = percent, fill = response)) + 
+  
+  # Make the plot a bar plot, specifically a "geom_col" plot, setting the
+  # position to "dodge2" (per the advice of Kieran Healey) so that columns
+  # corresponding to the same age group are not stacked and are slightly
+  # separated and setting the column width to 0.7 so that there is sufficient
+  # space separating columns corresponding to different age groups
+  
+  geom_col(position = "dodge2", width = 0.7) + 
+  
+  # Flip the coordinates so that x becomes y and y becomes x; visually,
+  # "percent" appears as the x-axis variable, and "ager" appears as the y-axis
+  # variable; I choose to flip the coordinates in this way for better visibility
+  # of axis-tick labels; in one of Healey's examples, he writes "If we map
+  # religion to the x-axis, the labels will overlap and become illegible...It
+  # makes more sense to put the religions on the y-axis and the percent scores
+  # on the x-axis"; as the same thing would happen were I to map "ager" to the
+  # x-axis, I followed suit and put "ager" on the y-axis and "percent" on the
+  # x-axis
+  
+  coord_flip() + 
+  
+  # Facet the plot by the variable "region", creating four subplots, one for
+  # each region, per the advice of Healey, who writes that "[a]s a rule, dodged
+  # charts can be more cleanly expressed as faceted plots"; I choose to facet by
+  # "region" and not "ager", as doing so faciliates comparison across age groups
+  # within regions
+  
+  facet_wrap(~region) + 
+  
+  # Give the plot new x- and y-axis labels, a title, a subtitle, a caption, and
+  # a new legend title; in the caption, I note the weighting of percentages, the
+  # exclusion of undecided respondents, and my source
+  
+  labs(x = "Age Group", 
+       y = "Percent of Respondents", 
+       title = "Polling Results in California's 48th Congressional District by Region and Age Group", 
+       subtitle = "For all age groups in Laguna Beach/South, a higher percentage of respondents supported the Democratic candidate", 
+       caption = "Percentages are weighed to reflect likely voters.\n Undecided respondents were included in calculating percentages but are not included in this graphic.\n Source: New York Times Upshot/Siena College from October-November 2018", 
+       fill = "Response") + 
+  
+  # Create my own discrete scale, assigning aesthetic values so that the order
+  # of the legend is reversed (with "Republican" appearing first and "Democrat"
+  # appearing second, matching the order in which the columns appear on the
+  # plot), so that "Dem" and "Rep" on the legend are renamed to "Democrat" and
+  # "Republican", and so that "steelblue2" corresponds to "Democrat" and
+  # "tomato2" corresponds to "Republican" in keeping with the colors
+  # traditionally associated with the Democratic and Republican parties
+  
+  scale_fill_manual(guide = guide_legend(reverse = TRUE), 
+                    labels = c("Democrat", "Republican"), 
+                    values = c("steelblue2", "tomato2"))
+
+```
