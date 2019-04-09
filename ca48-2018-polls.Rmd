@@ -22,11 +22,10 @@ library(tidyverse)
 
 ```{r read_data}
 
-# Read in the file "mt_1_elections-poll-ca48-3.csv" (polling data for the 48th
-# Congressional District in California) and store as a new dataset called
-# "ca48_data"
+# Read in polling data for the 48th Congressional District in California from
+# The Upshot's Github and store as a new dataset called "ca48_data"
 
-ca48_data <- read_csv("elections-poll-ca48-3.csv")
+ca48_data <- read_csv("https://raw.githubusercontent.com/TheUpshot/2018-live-poll-results/master/data/elections-poll-ca48-3.csv")
 
 ```
 
